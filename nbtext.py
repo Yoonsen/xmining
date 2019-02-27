@@ -118,7 +118,19 @@ def name_graph(name_struct):
     Gg.add_edges_from(G)
     return Gg
 
+def aggregate_urns(urnlist):
+    """Sum up word frequencies across urns"""
+    
+    if isinstance(urnlist[0], list):
+        urnlist = [u[0] for u in urnlist]
+    r = requests.post("https://api.nb.no/ngram/book_aggregates", json={'urns':urnlist})
+    return r.json()
 
+# Norweigan word bank
+def word_variant(word, form):
+    """ Find alternative form for a given word form, e.g. word_variant('spiste', 'pres-part') """
+    r = requests.get("https://api.nb.no/ngram/variant_form", params={'word':word, 'form':form})
+    return r.json()
 
 def check_edges(G, weight=1):    
     return nx.Graph([edge for edge in G.edges(data=True) if edge[2]['weight'] >= weight])
@@ -322,13 +334,16 @@ def get_papers(top=5, cutoff=5, navn='%', yearfrom=1800, yearto=2020, samplesize
 
 def urn_coll(word, urns=[], after=5, before=5, limit=1000):
     """Find collocations for word in a set of book URNs. Only books at the moment"""
+    
     if isinstance(urns[0], list):  # urns assumed to be list of list with urn-serial as first element
         urns = [u[0] for u in urns]
         
     r = requests.post("https://api.nb.no/ngram/urncoll", json={'word':word, 'urns':urns, 
                                                                    'after':after, 'before':before, 'limit':limit})
-    return pd.DataFrame.from_dict(r.json(), orient='index').sort_values(by=0, ascending = False)
-
+    res = pd.DataFrame.from_dict(r.json(), orient='index')
+    if not res.empty:
+        res = res.sort_values(by=res.columns[0], ascending = False)
+    return res
 
 def urn_coll_words(words, urns=None, after=5, before=5, limit=1000):
     """Find collocations for a group of words within a set of books given by a list of URNs. Only books at the moment"""
@@ -356,7 +371,9 @@ def urn_coll_words(words, urns=None, after=5, before=5, limit=1000):
             except:
                 True
         coll = pd.DataFrame.from_dict(res, orient='index')
-    return coll.sort_values(by=coll.columns[0], ascending = False)
+        if not coll.empty:
+            coll = coll.sort_values(by=coll.columns[0], ascending = False) 
+    return coll
 
 
 def get_aggregated_corpus(urns, top=0, cutoff=0):

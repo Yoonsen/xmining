@@ -20,7 +20,7 @@ except ImportError:
 #************** For defining wordbag search
 
 def dict2pd(dictionary):
-    res = pd.DataFrame(dictionary).fillna(0)
+    res = pd.DataFrame.from_dict(dictionary).fillna(0)
     s = (res.mean(axis=0))
     s = s.rename('snitt')
     res = res.append(s)
@@ -56,6 +56,27 @@ def wordbag_eval(wordbag, urns):
     r = requests.post("https://api.nb.no/ngram/wordbags", json = param)
     return dict2pd(r.json())
 
+def wordbag_eval_para(wordbag, urns):
+    if type(urns) is list:
+        if isinstance(urns[0], list):
+            urns = [u[0] for u in urns]
+        else:
+            urns = urns
+    else:
+        urns = [urns]
+    param = dict()
+    param['wordbags'] = wordbag
+    param['urns'] = urns
+    r = requests.post("https://api.nb.no/ngram/wordbags_para", json = param)
+    return r.json()
+
+def get_paragraphs(urn, paras):
+    """Return paragraphs for urn"""
+    param = dict()
+    param['paragraphs'] = paras
+    param['urn'] = urn
+    r = requests.get("https://api.nb.no/ngram/paragraphs", json=param)
+    return dict2pd(r.json())
 
 ### ******************* wordbag search end
 
@@ -132,8 +153,19 @@ def word_variant(word, form):
     r = requests.get("https://api.nb.no/ngram/variant_form", params={'word':word, 'form':form})
     return r.json()
 
-def check_edges(G, weight=1):    
-    return nx.Graph([edge for edge in G.edges(data=True) if edge[2]['weight'] >= weight])
+def word_paradigm(word):
+    """ Find alternative form for a given word form, e.g. word_variant('spiste', 'pres-part') """
+    r = requests.get("https://api.nb.no/ngram/paradigm", params = {'word': word})
+    return r.json()
+
+
+def word_form(word):
+    """ Find alternative form for a given word form, e.g. word_variant('spiste', 'pres-part') """
+    r = requests.get("https://api.nb.no/ngram/word_form", params = {'word': word})
+    return r.json()
+
+
+
 
 def word_freq(urn, words):
     params = {'urn':urn, 'words':words}
@@ -255,6 +287,8 @@ def row_agg(df, col='sum'):
 
 def get_freq(urn, top=50, cutoff=3):
     """Get frequency list for urn"""
+    if isinstance(urn, list):
+        urn = urn[0]
     r = requests.get("https://api.nb.no/ngram/urnfreq", json={'urn':urn, 'top':top, 'cutoff':cutoff})
     return Counter(dict(r.json()))
 
@@ -1029,14 +1063,34 @@ def vekstdiagram(urn, params=None):
     r = requests.post('https://api.nb.no/ngram/vekstdiagram', json = para)
     return pd.DataFrame(r.json())
 
+def plot_book_wordbags(urn, wordbags, window=5000, pr = 100):
+    """Generate a diagram of wordbags in book """
+    return plot_sammen_vekst(urn, wordbags, window=window, pr=pr)
+    
+
 def plot_sammen_vekst(urn, ordlister, window=5000, pr = 100):
     """Plott alle seriene sammen"""
     rammer = []
-    for ordbag in ordlister:
-        vekst = vekstdiagram(urn, params = {'words': ordbag, 'window':window, 'pr': pr} )
-        vekst.columns = [ordbag[0]]
+    c = dict()
+    if isinstance(ordlister, list):
+        if isinstance(ordlister[0], list):
+            for l in ordlister:
+                if l != []:
+                    c[l[0]] = l
+        else:
+            c[ordlister[0]] = ordlister
+    else:
+        c = ordlister
+    for key in c:
+        vekst = vekstdiagram(urn, params = {'words': c[key], 'window':window, 'pr': pr} )
+        vekst.columns = [key]
         rammer.append(vekst)
     return pd.concat(rammer)
+
+def spurious_names(n=300):
+    topwords = totals(n)
+    Removals = [x.capitalize() for x in topwords if x.isalpha()]
+    return Removals
 
 def relaterte_ord(word, number = 20, score=False):
     G = make_graph(word)
